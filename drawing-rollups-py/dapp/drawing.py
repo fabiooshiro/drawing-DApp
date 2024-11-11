@@ -13,6 +13,7 @@ import cartesi_wallet.wallet as Wallet
 from cartesi_wallet.util import hex_to_str
 # from web3 import Web3
 from eth_utils import to_wei, from_wei
+import time
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger(__name__)
@@ -203,13 +204,23 @@ finish = {"status": "accept"}
 rollup_address = None
 
 while True:
-    logger.info("Sending finish")
-    response = requests.post(rollup_server + "/finish", json=finish)
-    logger.info(f"Received finish status {response.status_code}") 
-   
-    if response.status_code == 202:
-        logger.info("No pending rollup request, trying again")
-    else:
-        rollup_request = response.json() 
-        handler = handlers[rollup_request["request_type"]]
-        finish["status"] = handler(rollup_request["data"])
+    try:
+        logger.info("Sending finish")
+        response = requests.post(rollup_server + "/finish", json=finish)
+        logger.info(f"Received finish status {response.status_code}")
+        
+        if 500 <= response.status_code < 600:
+            logger.error(f"Server error {response.status_code}: retrying in a moment")
+            time.sleep(2)
+            continue
+        
+        if response.status_code == 202:
+            logger.info("No pending rollup request, trying again")
+        else:
+            rollup_request = response.json()
+            handler = handlers[rollup_request["request_type"]]
+            finish["status"] = handler(rollup_request["data"])
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"An error occurred: {e}")
+        time.sleep(2)
